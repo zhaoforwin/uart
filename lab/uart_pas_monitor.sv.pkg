@@ -1,0 +1,81 @@
+class uart_pas_monitor extends uvm_monitor;
+
+ //   localparam int UART_BIT_CLKS = 5209;
+
+    `uvm_component_utils(uart_pas_monitor)
+
+    virtual uart_interface intf;
+    uvm_analysis_port #(uart_transaction) pm_ap;
+
+    function new(string name ="",uvm_component parent);
+
+        super.new(name,parent);
+        pm_ap = new("pm_ap",this);
+
+    endfunction
+
+
+
+    function void build_phase(uvm_phase phase);
+        
+        super.build_phase(phase);
+        if(!uvm_config_db #(virtual uart_interface)::get(
+                                this,
+                                "",
+                                "vif",
+                                intf
+                                ))begin
+                                    `uvm_fatal("MONITOR CONFIG","interface config error")
+                                end
+
+
+    endfunction
+
+
+
+    task run_phase(uvm_phase phase);
+
+        logic[7:0] rx_data;
+
+        uart_transaction tr;
+        tr = uart_transaction::type_id::create("tr");
+        wait(intf.sw_0 === 1'b1);
+
+        forever begin
+
+            @(negedge intf.uart_txd);
+            `uvm_info("UART_PAS_MONITOR","UART start bit detected",UVM_LOW)
+            
+            repeat(UART_BIT_CLKS/2)
+                @(posedge intf.clk);
+
+            if(intf.uart_txd !==1'b0)begin
+                    `uvm_error("UVM_PAS_MONITOR","Invalid UART start bit")
+                    continue;
+            end
+
+            for(int i = 0;i<8;i++)begin
+                    repeat(UART_BIT_CLKS)
+                        @(posedge intf.clk);
+                    rx_data[i] = intf.uart_txd;
+            end
+
+            repeat(UART_BIT_CLKS)
+                    @(posedge intf.clk);
+
+            if(intf.uart_txd !== 1'b1)begin
+                    `uvm_error("UVM_PAS_MONITOR","INVALID STOP UART BIT")
+            end
+
+            tr.data = rx_data;
+            `uvm_info("UART_MONITOR",$sformatf("received data = 0x%02h",tr.data),UVM_LOW)
+            pm_ap.write(tr);
+        end
+
+    endtask
+
+
+
+
+
+endclass
